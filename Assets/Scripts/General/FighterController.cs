@@ -17,9 +17,9 @@ public class FighterController : MonoBehaviour
     public Rigidbody rb;
 
     [Header("Combat References")]
-    public BoxCollider hitbox;       // single hitbox — reshaped per attack
-    public Transform hurtboxRoot;   // always-on hurtbox lives here
-    public AttackData[] attacks;    // [0] light, [1] heavy, [2] launcher — assign in Inspector
+    public BoxCollider hitbox;
+    public Transform hurtboxRoot;
+    public AttackData[] attacks;    // [0] light, [1] heavy, [2] launcher
 
     [Header("Opponent")]
     public FighterController opponent;
@@ -28,14 +28,30 @@ public class FighterController : MonoBehaviour
     public FighterData data;
     public float currentHealth;
 
-    // Private
+    [Header("Movement Feel")]
+    [Tooltip("Instant horizontal speed while in the air.")]
+    public float airSpeed = 10f;
+    [Tooltip("Seconds — jump input remembered before landing")]
+    public float jumpBufferTime = 0.12f;
+
+    [Space]
+    [Tooltip("Multiplies gravity. Higher numbers make the character fall/rise much faster.")]
+    public float gravityMultiplier = 4f;
+    [Tooltip("Additional multiplier applied ONLY when falling down for a sharp, snappy peak.")]
+    public float fallMultiplier = 1.3f;
+
+    // Private — state
     private float maxHealth;
-    private bool isGrounded;
     private bool facingRight = true;
     private Vector2 moveInput;
 
-    // Input actions — cached from PlayerInput on the same GameObject
-    private PlayerInput playerInput;
+    // Private — grounded
+    private bool isGrounded;
+
+    // Private — jump buffer
+    private float jumpBufferTimer;
+
+    // Private — input
     private InputAction moveAction;
     private InputAction jumpAction;
     private InputAction blockAction;
@@ -88,8 +104,7 @@ public class FighterController : MonoBehaviour
     private void Update()
     {
         ReadInput();
-        Debug.Log($"Move: {moveInput} | Jump: {jumpAction.WasPressedThisFrame()} | Light: {lightAttackAction.WasPressedThisFrame()} | IsGrounded: {isGrounded}");
-        CheckGrounded();
+        UpdateTimers();
         FaceOpponent();
 
         switch (currentState)
@@ -103,6 +118,11 @@ public class FighterController : MonoBehaviour
         }
     }
 
+    private void FixedUpdate()
+    {
+        ApplyMovement();
+    }
+
     // -------------------------------------------------------
     // Input
     // -------------------------------------------------------
@@ -110,15 +130,89 @@ public class FighterController : MonoBehaviour
     void ReadInput()
     {
         moveInput = moveAction.ReadValue<Vector2>();
+
+        if (jumpAction.WasPressedThisFrame())
+            jumpBufferTimer = jumpBufferTime;
     }
 
     // -------------------------------------------------------
-    // Ground check
+    // Timers
     // -------------------------------------------------------
 
-    void CheckGrounded()
+    void UpdateTimers()
     {
-        isGrounded = Mathf.Abs(rb.linearVelocity.y) < 0.05f;
+        jumpBufferTimer -= Time.deltaTime;
+
+        // FIXED: Added '&& currentState != FighterState.Blocking' to lock jumping while guarding
+        if (jumpBufferTimer > 0f
+            && isGrounded
+            && currentState != FighterState.Attacking
+            && currentState != FighterState.KO
+            && currentState != FighterState.Knockback
+            && currentState != FighterState.Blocking)
+        {
+            Jump();
+            jumpBufferTimer = 0f;
+        }
+    }
+
+    // -------------------------------------------------------
+    // Grounded
+    // -------------------------------------------------------
+
+    private void OnCollisionStay(Collision collision)
+    {
+        foreach (ContactPoint contact in collision.contacts)
+        {
+            if (contact.normal.y > 0.7f)
+            {
+                isGrounded = true;
+                return;
+            }
+        }
+    }
+
+    private void OnCollisionExit(Collision collision)
+    {
+        isGrounded = false;
+    }
+
+    // -------------------------------------------------------
+    // Movement & Physics
+    // -------------------------------------------------------
+
+    void ApplyMovement()
+    {
+        if (currentState == FighterState.Attacking
+            || currentState == FighterState.Knockback
+            || currentState == FighterState.KO
+            || currentState == FighterState.Blocking)
+            return;
+
+        if (isGrounded)
+        {
+            float targetSpeed = moveInput.x * data.moveSpeed;
+            rb.linearVelocity = new Vector3(targetSpeed, rb.linearVelocity.y, 0f);
+        }
+        else
+        {
+            float targetAirSpeed = moveInput.x * airSpeed;
+            rb.linearVelocity = new Vector3(targetAirSpeed, rb.linearVelocity.y, 0f);
+
+            if (rb.linearVelocity.y > 0)
+            {
+                rb.AddForce(Physics.gravity * (gravityMultiplier - 1f), ForceMode.Acceleration);
+            }
+            else if (rb.linearVelocity.y < 0)
+            {
+                rb.AddForce(Physics.gravity * ((gravityMultiplier * fallMultiplier) - 1f), ForceMode.Acceleration);
+            }
+        }
+
+        if (currentState == FighterState.Idle && Mathf.Abs(moveInput.x) > 0.01f)
+            TransitionTo(FighterState.Moving);
+        else if (currentState == FighterState.Moving && Mathf.Abs(moveInput.x) < 0.01f)
+            TransitionTo(FighterState.Idle);
     }
 
     // -------------------------------------------------------
@@ -146,69 +240,32 @@ public class FighterController : MonoBehaviour
 
     void HandleIdle()
     {
-        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
-
-        if (moveInput.x != 0f)
-            TransitionTo(FighterState.Moving);
-
-        if (jumpAction.WasPressedThisFrame() && isGrounded)
-            Jump();
-
-        if (lightAttackAction.WasPressedThisFrame())
-            StartAttack(0);
-
-        if (heavyAttackAction.WasPressedThisFrame())
-            StartAttack(1);
-
-        if (blockAction.WasPressedThisFrame())
-            TransitionTo(FighterState.Blocking);
+        if (lightAttackAction.WasPressedThisFrame()) StartAttack(0);
+        if (heavyAttackAction.WasPressedThisFrame()) StartAttack(1);
+        if (blockAction.WasPressedThisFrame()) TransitionTo(FighterState.Blocking);
     }
 
     void HandleMoving()
     {
-        rb.linearVelocity = new Vector3(moveInput.x * data.moveSpeed, rb.linearVelocity.y, 0f);
-
-        if (moveInput.x == 0f)
-            TransitionTo(FighterState.Idle);
-
-        if (jumpAction.WasPressedThisFrame() && isGrounded)
-            Jump();
-
-        if (lightAttackAction.WasPressedThisFrame())
-            StartAttack(0);
-
-        if (heavyAttackAction.WasPressedThisFrame())
-            StartAttack(1);
-
-        if (blockAction.WasPressedThisFrame())
-            TransitionTo(FighterState.Blocking);
+        if (lightAttackAction.WasPressedThisFrame()) StartAttack(0);
+        if (heavyAttackAction.WasPressedThisFrame()) StartAttack(1);
+        if (blockAction.WasPressedThisFrame()) TransitionTo(FighterState.Blocking);
     }
 
-    void HandleAttacking()
-    {
-        // Horizontal movement locked during attacks
-        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
-        // Attack completion driven by Animation Event calling OnAttackEnd()
-    }
+    void HandleAttacking() { }
 
     void HandleBlocking()
     {
         rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
-
         if (!blockAction.IsPressed())
             TransitionTo(FighterState.Idle);
     }
 
-    void HandleKnockback()
-    {
-        // Knockback velocity applied by TakeDamage
-        // Animation Event on knockback clip calls TransitionTo(Idle) when recovery ends
-    }
+    void HandleKnockback() { }
 
     void HandleKO()
     {
         rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
-        // RoundManager watches for this state to end the round
     }
 
     // -------------------------------------------------------
@@ -228,8 +285,6 @@ public class FighterController : MonoBehaviour
     {
         if (attacks == null || attackIndex >= attacks.Length) return;
         TransitionTo(FighterState.Attacking);
-        // Animation Event on the attack clip calls EnableHitboxForAttack(attackIndex)
-        // and OnAttackEnd() — those drive the rest
     }
 
     // -------------------------------------------------------
@@ -238,6 +293,7 @@ public class FighterController : MonoBehaviour
 
     public void TakeDamage(AttackData attack)
     {
+        Debug.Log($"{gameObject.name} taking {attack.damage} damage, health now: {currentHealth}");
         if (currentState == FighterState.KO) return;
 
         float damage = attack.damage;
@@ -247,7 +303,6 @@ public class FighterController : MonoBehaviour
         currentHealth -= damage;
         currentHealth = Mathf.Max(currentHealth, 0f);
 
-        // Apply knockback force away from attacker
         if (opponent != null)
         {
             float direction = transform.position.x > opponent.transform.position.x ? 1f : -1f;
@@ -262,12 +317,10 @@ public class FighterController : MonoBehaviour
             TransitionTo(FighterState.KO);
         else
             TransitionTo(FighterState.Knockback);
-
-        // Hit-stop and screen shake plug in here next step
     }
 
     // -------------------------------------------------------
-    // Combat — hitbox control (called by Animation Events)
+    // Hitboxes
     // -------------------------------------------------------
 
     public void EnableHitboxForAttack(int attackIndex)
@@ -275,7 +328,12 @@ public class FighterController : MonoBehaviour
         if (hitbox == null || attacks == null || attackIndex >= attacks.Length) return;
 
         AttackData attack = attacks[attackIndex];
-        hitbox.center = attack.hitboxOffset;
+
+        // Flip the offset X based on facing direction
+        Vector3 offset = attack.hitboxOffset;
+        if (!facingRight) offset.x *= -1f;
+
+        hitbox.center = offset;
         hitbox.size = attack.hitboxSize;
         hitbox.GetComponent<Hitbox>().attackData = attack;
         hitbox.gameObject.SetActive(true);
@@ -287,7 +345,6 @@ public class FighterController : MonoBehaviour
             hitbox.gameObject.SetActive(false);
     }
 
-    // Called by Animation Event at the end of an attack clip
     public void OnAttackEnd()
     {
         DisableHitbox();
@@ -321,7 +378,6 @@ public class FighterController : MonoBehaviour
 
     void OnExitState(FighterState state)
     {
-        // Reset velocity when leaving knockback so the fighter doesn't slide
         if (state == FighterState.Knockback)
             rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
     }

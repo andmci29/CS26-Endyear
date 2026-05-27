@@ -19,5 +19,11 @@ public class StateDebugger : MonoBehaviour
         if (kb.digit4Key.wasPressedThisFrame) fighter.TransitionTo(FighterState.Blocking);
         if (kb.digit6Key.wasPressedThisFrame) fighter.TransitionTo(FighterState.Knockback);
         if (kb.digit7Key.wasPressedThisFrame) fighter.TransitionTo(FighterState.KO);
+
+        if (Keyboard.current.hKey.wasPressedThisFrame)
+            fighter.EnableHitboxForAttack(0); // manually fire light attack hitbox
+
+        if (Keyboard.current.nKey.wasPressedThisFrame)
+            fighter.DisableHitbox();
     }
 }

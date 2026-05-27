@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 87c6d39e3c6263845a1711cc5029220d, type: 3}
   m_Name: FighterDefault
   m_EditorClassIdentifier: Assembly-CSharp::FighterData
-  moveSpeed: 5
-  jumpForce: 10
+  moveSpeed: 30
+  jumpForce: 55
   lightDamage: 8
   heavyDamage: 18
   grabDamage: 15
