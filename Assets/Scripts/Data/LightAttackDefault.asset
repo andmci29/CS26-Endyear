@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eb4114fcf863b4f4b876f29ff6a64a39, type: 3}
   m_Name: LightAttackDefault
   m_EditorClassIdentifier: Assembly-CSharp::AttackData
-  damage: 8
+  damage: 10
   blockDamageMultiplier: 0.2
   knockbackForce: {x: 3, y: 1}
   hitStopDuration: 0.08

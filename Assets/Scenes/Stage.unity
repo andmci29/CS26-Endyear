@@ -3007,7 +3007,6 @@ GameObject:
   - component: {fileID: 1355291507}
   - component: {fileID: 1355291506}
   - component: {fileID: 1355291505}
-  - component: {fileID: 1355291504}
   - component: {fileID: 1355291503}
   - component: {fileID: 1355291502}
   m_Layer: 0
@@ -3067,18 +3066,6 @@ Rigidbody:
   m_Interpolate: 1
   m_Constraints: 112
   m_CollisionDetection: 1
---- !u!114 &1355291504
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1355291501}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 419431009eebdd94cbece6dc4ae2701a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::StateDebugger
 --- !u!114 &1355291505
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3103,7 +3090,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 3187c2472620fcc4ca2aef6a691c2228, type: 2}
   opponent: {fileID: 1397014410}
   data: {fileID: 11400000, guid: 220e7f41e88330b42a5242866188777b, type: 2}
-  currentHealth: 0
+  currentHealth: 100
   airSpeed: 15
   jumpBufferTime: 0.12
   gravityMultiplier: 8
@@ -3350,7 +3337,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 3187c2472620fcc4ca2aef6a691c2228, type: 2}
   opponent: {fileID: 1355291505}
   data: {fileID: 11400000, guid: 220e7f41e88330b42a5242866188777b, type: 2}
-  currentHealth: 0
+  currentHealth: 100
   airSpeed: 15
   jumpBufferTime: 0.12
   gravityMultiplier: 8
@@ -5253,6 +5240,7 @@ GameObject:
   - component: {fileID: 1984100223}
   - component: {fileID: 1984100225}
   - component: {fileID: 1984100224}
+  - component: {fileID: 1984100226}
   m_Layer: 6
   m_Name: Hitbox_P1
   m_TagString: Untagged
@@ -5292,7 +5280,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 1
   m_ProvidesContacts: 0
-  m_Enabled: 0
+  m_Enabled: 1
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
@@ -5309,6 +5297,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Hitbox
   attackData: {fileID: 0}
+--- !u!114 &1984100226
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1984100222}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f479ff0d6c61e0b4680de825562664fe, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::OverlapDebugger
 --- !u!1001 &2001803204
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -5449,7 +5449,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 1
   m_ProvidesContacts: 0
-  m_Enabled: 0
+  m_Enabled: 1
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}

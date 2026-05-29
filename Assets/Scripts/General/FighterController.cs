@@ -50,6 +50,7 @@ public class FighterController : MonoBehaviour
 
     // Private — jump buffer
     private float jumpBufferTimer;
+    private float knockbackTimer;
 
     // Private — input
     private InputAction moveAction;
@@ -64,9 +65,11 @@ public class FighterController : MonoBehaviour
     // Unity lifecycle
     // -------------------------------------------------------
 
+    private FighterInputActions actions; // promote to field so we can dispose it
+
     private void Awake()
     {
-        var actions = new FighterInputActions();
+        actions = new FighterInputActions(); // store reference
 
         if (playerNumber == 1)
         {
@@ -90,6 +93,13 @@ public class FighterController : MonoBehaviour
             specialAction = actions.FighterP2.Special;
             superAction = actions.FighterP2.Super;
         }
+    }
+
+    private void OnDestroy()
+    {
+        actions.Fighter.Disable();
+        actions.FighterP2.Disable();
+        actions.Dispose();
     }
 
     private void Start()
@@ -261,7 +271,12 @@ public class FighterController : MonoBehaviour
             TransitionTo(FighterState.Idle);
     }
 
-    void HandleKnockback() { }
+    void HandleKnockback()
+    {
+        knockbackTimer -= Time.deltaTime;
+        if (knockbackTimer <= 0f)
+            TransitionTo(FighterState.Idle);
+    }
 
     void HandleKO()
     {
@@ -293,7 +308,6 @@ public class FighterController : MonoBehaviour
 
     public void TakeDamage(AttackData attack)
     {
-        Debug.Log($"{gameObject.name} taking {attack.damage} damage, health now: {currentHealth}");
         if (currentState == FighterState.KO) return;
 
         float damage = attack.damage;
@@ -316,7 +330,10 @@ public class FighterController : MonoBehaviour
         if (currentHealth <= 0f)
             TransitionTo(FighterState.KO);
         else
+        {
+            knockbackTimer = data.knockbackDuration; // set timer on hit
             TransitionTo(FighterState.Knockback);
+        }
     }
 
     // -------------------------------------------------------
@@ -365,6 +382,8 @@ public class FighterController : MonoBehaviour
 
     void OnEnterState(FighterState state)
     {
+        if (animator == null || animator.runtimeAnimatorController == null) return;
+
         switch (state)
         {
             case FighterState.Idle: animator.SetTrigger("Idle"); break;
