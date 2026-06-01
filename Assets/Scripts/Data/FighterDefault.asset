@@ -18,5 +18,5 @@ MonoBehaviour:
   heavyDamage: 18
   grabDamage: 15
   blockDamageMultiplier: 0.2
-  knockbackDuration: 0.4
-  maxHealth: 100
+  knockbackDuration: 0.3
+  maxHealth: 500

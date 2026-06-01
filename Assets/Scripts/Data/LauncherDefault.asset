@@ -14,8 +14,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AttackData
   damage: 12
   blockDamageMultiplier: 0.2
-  knockbackForce: {x: 1, y: 8}
+  knockbackForce: {x: 1, y: 60}
   hitStopDuration: 0.08
   screenShakeMagnitude: 0.15
   hitboxOffset: {x: 0.5, y: 0, z: 0}
   hitboxSize: {x: 0.7, y: 0.7, z: 0.7}
+  attackDuration: 0.3
+  hitboxActiveTime: 0.15

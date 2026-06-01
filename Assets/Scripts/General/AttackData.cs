@@ -17,4 +17,8 @@ public class AttackData : ScriptableObject
     [Header("Hitbox Shape")]
     public Vector3 hitboxOffset = new Vector3(0.5f, 0f, 0f);
     public Vector3 hitboxSize = new Vector3(0.8f, 0.6f, 0.6f);
+
+    [Header("Timing")]
+    public float attackDuration = 0.3f;   // total length of the attack state
+    public float hitboxActiveTime = 0.15f; // how long the hitbox stays on within that window
 }

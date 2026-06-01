@@ -2,7 +2,6 @@ using UnityEngine;
 
 public class Hurtbox : MonoBehaviour
 {
-    // Auto-assigned — no manual Inspector drag needed
     [HideInInspector]
     public FighterController owner;
 
@@ -17,10 +16,16 @@ public class Hurtbox : MonoBehaviour
     public void ReceiveHit(AttackData attack, FighterController attacker)
     {
         if (owner == null) return;
-        if (owner == attacker) return; // safety net — should already be caught in Hitbox
+        if (owner == attacker) return;
 
         Debug.Log($"Hurtbox hit — owner: {owner.name}, attacker: {attacker.name}, damage: {attack.damage}");
+
+        // FIX: Apply damage and stage knockback vectors first
         owner.TakeDamage(attack);
+
+        // Then freeze the frame loop simultaneously
+        owner.ApplyHitStop(attack.hitStopDuration);
+        attacker.ApplyHitStop(attack.hitStopDuration);
     }
 
     private void OnDrawGizmos()
