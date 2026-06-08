@@ -3,6 +3,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "FighterData", menuName = "Fighter Data")]
 public class FighterData : ScriptableObject
 {
+
     [Header("Movement")]
     public float moveSpeed = 5f;
     public float jumpForce = 10f;

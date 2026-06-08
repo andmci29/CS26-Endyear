@@ -19,6 +19,10 @@ public class AttackData : ScriptableObject
     public Vector3 hitboxSize = new Vector3(0.8f, 0.6f, 0.6f);
 
     [Header("Timing")]
-    public float attackDuration = 0.3f;   // total length of the attack state
-    public float hitboxActiveTime = 0.15f; // how long the hitbox stays on within that window
+    [Tooltip("Seconds to wait before the hitbox turns on (Startup phase).")]
+    public float hitboxDelay = 0.12f;
+    [Tooltip("How long the hitbox stays active once spawned (Active phase).")]
+    public float hitboxActiveTime = 0.15f;
+    [Tooltip("Total length of the entire attack state sequence.")]
+    public float attackDuration = 0.4f;
 }

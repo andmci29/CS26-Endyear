@@ -48,8 +48,11 @@ public class FighterController : MonoBehaviour
 
     // Private — state
     private float maxHealth;
-    private bool facingRight = true;
+    public bool facingRight = true;   // public so special ability scripts can read facing direction
     private Vector2 moveInput;
+
+    // Special ability — auto-found in Start, null if character has none
+    private SpecialAbilityBase specialAbility;
 
     // Private — grounded
     private bool isGrounded;
@@ -61,9 +64,12 @@ public class FighterController : MonoBehaviour
     private float hitboxTimer;
     private int currentAttackIndex = -1;
     private bool isHitStopped = false;
+    private Coroutine hitStopRoutine;
+    private float hitStopEndTime;
 
-    // FIX: Promoted to class field to safely buffer knockback values during hit-stop freezes
+    // Private — combat/animation tracking
     private Vector3 hitStopStoredVelocity;
+    private bool wasBlockingWhenHit = false; // Tracks if the hit was absorbed by a block
 
     // Private — input
     private InputAction moveAction;
@@ -120,6 +126,9 @@ public class FighterController : MonoBehaviour
             actions.FighterP2.Disable();
             actions.Dispose();
         }
+
+        if (hitStopRoutine != null)
+            StopCoroutine(hitStopRoutine);
     }
 
     private void Start()
@@ -129,6 +138,20 @@ public class FighterController : MonoBehaviour
 
         if (hitbox != null)
             hitbox.gameObject.SetActive(false);
+
+        // Cache any special ability component on this GameObject
+        specialAbility = GetComponent<SpecialAbilityBase>();
+
+        if (playerNumber == 1)
+        {
+            facingRight = true;
+            transform.rotation = Quaternion.Euler(0f, 90f, 0f);
+        }
+        else
+        {
+            facingRight = false;
+            transform.rotation = Quaternion.Euler(0f, -90f, 0f);
+        }
     }
 
     private void Update()
@@ -146,8 +169,16 @@ public class FighterController : MonoBehaviour
             case FighterState.Knockback: HandleKnockback(); break;
             case FighterState.KO: HandleKO(); break;
         }
-    }
 
+        // Global Animator parameters updated continuously per-frame
+        if (animator != null && animator.runtimeAnimatorController != null)
+        {
+            animator.SetBool("IsGrounded", isGrounded);
+
+            // FIX: Feeds the current state machine choice safely as a boolean parameter
+            animator.SetBool("IsMoving", currentState == FighterState.Moving);
+        }
+    }
     private void FixedUpdate()
     {
         ApplyMovement();
@@ -159,6 +190,13 @@ public class FighterController : MonoBehaviour
 
     void ReadInput()
     {
+        // FIX: If KO'ed, completely ignore button configurations and clear inputs
+        if (currentState == FighterState.KO)
+        {
+            moveInput = Vector2.zero;
+            return;
+        }
+
         moveInput = moveAction.ReadValue<Vector2>();
 
         if (jumpAction.WasPressedThisFrame())
@@ -193,7 +231,7 @@ public class FighterController : MonoBehaviour
     {
         foreach (ContactPoint contact in collision.contacts)
         {
-            if (contact.normal.y > 0.7f)
+            if (contact.normal.y > 0.5f)
             {
                 isGrounded = true;
                 isLaunched = false;  // back on ground — no longer launched
@@ -213,18 +251,13 @@ public class FighterController : MonoBehaviour
 
     void ApplyMovement()
     {
-        // FIX: Moved custom gravity processing outside the state switch gate.
-        // This ensures airborne knockback arcs utilize your sharp gravityMultiplier and fallMultiplier!
-        if (!isGrounded && currentState != FighterState.KO)
+        // FIX: Removed "&& currentState != FighterState.KO" so dead players still fall with proper heavy gravity weight
+        if (!isGrounded)
         {
             if (rb.linearVelocity.y > 0)
-            {
                 rb.AddForce(Physics.gravity * (gravityMultiplier - 1f), ForceMode.Acceleration);
-            }
             else if (rb.linearVelocity.y < 0)
-            {
                 rb.AddForce(Physics.gravity * ((gravityMultiplier * fallMultiplier) - 1f), ForceMode.Acceleration);
-            }
         }
 
         if (currentState == FighterState.Attacking
@@ -254,24 +287,36 @@ public class FighterController : MonoBehaviour
     {
         isHitStopped = true;
 
-        // Freeze physics safely using the class-scoped tracking variable
-        hitStopStoredVelocity = rb.linearVelocity;
-        rb.linearVelocity = Vector3.zero;
-        rb.isKinematic = true;
+        if (rb != null)
+        {
+            hitStopStoredVelocity = rb.linearVelocity;
+            rb.linearVelocity = Vector3.zero;
+        }
 
-        yield return new WaitForSecondsRealtime(duration);
+        hitStopEndTime = Time.realtimeSinceStartup + duration;
 
-        // Restore physics
-        rb.isKinematic = false;
-        rb.linearVelocity = hitStopStoredVelocity;
+        while (Time.realtimeSinceStartup < hitStopEndTime)
+            yield return null;
+
+        if (rb != null)
+            rb.linearVelocity = hitStopStoredVelocity; // now picks up the knockback velocity
 
         isHitStopped = false;
+        hitStopRoutine = null;
     }
 
     public void ApplyHitStop(float duration)
     {
-        if (isHitStopped) return;
-        StartCoroutine(HitStopCoroutine(duration));
+        if (rb == null || duration <= 0f) return;
+
+        if (isHitStopped)
+        {
+            hitStopEndTime = Mathf.Max(hitStopEndTime, Time.realtimeSinceStartup + duration);
+            return;
+        }
+
+        if (hitStopRoutine == null)
+            hitStopRoutine = StartCoroutine(HitStopCoroutine(duration));
     }
 
     // -------------------------------------------------------
@@ -280,9 +325,12 @@ public class FighterController : MonoBehaviour
 
     void FaceOpponent()
     {
-        if (currentState == FighterState.Knockback || currentState == FighterState.KO) return;
+        if (currentState == FighterState.Knockback || currentState == FighterState.KO || currentState == FighterState.Attacking) return;
 
         if (opponent == null) return;
+
+        if (Mathf.Abs(opponent.transform.position.x - transform.position.x) < 0.02f) return;
+
         bool opponentIsRight = opponent.transform.position.x > transform.position.x;
         if (opponentIsRight && !facingRight) Flip();
         else if (!opponentIsRight && facingRight) Flip();
@@ -291,7 +339,7 @@ public class FighterController : MonoBehaviour
     void Flip()
     {
         facingRight = !facingRight;
-        float yRotation = facingRight ? 0f : 180f;
+        float yRotation = facingRight ? 90f : -90f;
         transform.rotation = Quaternion.Euler(0f, yRotation, 0f);
     }
 
@@ -308,7 +356,6 @@ public class FighterController : MonoBehaviour
     {
         if (lightAttackAction.WasPressedThisFrame())
         {
-            // If opponent is launched, count this as the juggle hit
             if (opponent != null && opponent.CanBeJuggled)
                 opponent.RegisterJuggleHit();
 
@@ -317,8 +364,11 @@ public class FighterController : MonoBehaviour
 
         if (heavyAttackAction.WasPressedThisFrame()) StartAttack(1);
 
-        // Launcher — index 2, only usable grounded
-        if (specialAction.WasPressedThisFrame() && isGrounded) StartAttack(2);
+        if (specialAction.WasPressedThisFrame() && isGrounded)
+        {
+            if (specialAbility != null) specialAbility.TryActivate();
+            else StartAttack(2); // fallback to launcher if no special assigned
+        }
 
         if (blockAction.WasPressedThisFrame()) TransitionTo(FighterState.Blocking);
     }
@@ -327,17 +377,22 @@ public class FighterController : MonoBehaviour
     {
         if (lightAttackAction.WasPressedThisFrame())
         {
-            // If opponent is launched, count this as the juggle hit
             if (opponent != null && opponent.CanBeJuggled)
                 opponent.RegisterJuggleHit();
 
             StartAttack(0);
         }
 
-        if (heavyAttackAction.WasPressedThisFrame()) StartAttack(1);
+        if (heavyAttackAction.WasPressedThisFrame())
+        {
+            StartAttack(1);
+        }
 
-        // Launcher — index 2, only usable grounded
-        if (specialAction.WasPressedThisFrame() && isGrounded) StartAttack(2);
+        if (specialAction.WasPressedThisFrame() && isGrounded)
+        {
+            if (specialAbility != null) specialAbility.TryActivate();
+            else StartAttack(2); // fallback to launcher if no special assigned
+        }
 
         if (blockAction.WasPressedThisFrame()) TransitionTo(FighterState.Blocking);
     }
@@ -345,8 +400,6 @@ public class FighterController : MonoBehaviour
     void HandleAttacking()
     {
         if (isHitStopped) return;
-
-        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
 
         attackTimer -= Time.deltaTime;
         hitboxTimer -= Time.deltaTime;
@@ -361,7 +414,6 @@ public class FighterController : MonoBehaviour
     void HandleKnockback()
     {
         if (isHitStopped) return;
-
         knockbackTimer -= Time.deltaTime;
         if (knockbackTimer <= 0f)
             TransitionTo(FighterState.Idle);
@@ -376,7 +428,12 @@ public class FighterController : MonoBehaviour
 
     void HandleKO()
     {
-        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+        if (isHitStopped) return;
+
+        if (isGrounded)
+        {
+            rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+        }
     }
 
     // -------------------------------------------------------
@@ -386,6 +443,11 @@ public class FighterController : MonoBehaviour
     void Jump()
     {
         rb.linearVelocity = new Vector3(rb.linearVelocity.x, data.jumpForce, 0f);
+
+        if (animator != null && animator.runtimeAnimatorController != null)
+        {
+            animator.SetTrigger("Jump");
+        }
     }
 
     // -------------------------------------------------------
@@ -414,19 +476,27 @@ public class FighterController : MonoBehaviour
     {
         if (currentState == FighterState.KO) return;
 
+        // Cache block status context before modifying health or states
+        bool wasBlocking = (currentState == FighterState.Blocking);
+
         float damage = attack.damage;
-        if (currentState == FighterState.Blocking)
+        if (wasBlocking)
             damage *= attack.blockDamageMultiplier;
 
         currentHealth -= damage;
         currentHealth = Mathf.Max(currentHealth, 0f);
 
-        // Detect launcher by high upward force
         bool isLauncherHit = attack.knockbackForce.y >= 10f;
 
-        if (opponent != null)
+        if (rb != null)
         {
-            float direction = transform.position.x > opponent.transform.position.x ? 1f : -1f;
+            float direction;
+
+            if (opponent != null)
+                direction = transform.position.x > opponent.transform.position.x ? 1f : -1f;
+            else
+                direction = facingRight ? 1f : -1f;
+
             Vector3 knockbackVelocity = new Vector3(
                 attack.knockbackForce.x * direction,
                 attack.knockbackForce.y,
@@ -442,7 +512,7 @@ public class FighterController : MonoBehaviour
         if (isLauncherHit)
         {
             isLaunched = true;
-            hasBeenJuggled = false; // reset juggle counter on fresh launch
+            hasBeenJuggled = false;
         }
 
         TriggerScreenShake(attack.screenShakeMagnitude);
@@ -451,6 +521,7 @@ public class FighterController : MonoBehaviour
             TransitionTo(FighterState.KO);
         else
         {
+            wasBlockingWhenHit = wasBlocking; // Carry block data forward into state transfer evaluation
             knockbackTimer = data.knockbackDuration;
             TransitionTo(FighterState.Knockback);
         }
@@ -465,14 +536,30 @@ public class FighterController : MonoBehaviour
         if (hitbox == null || attacks == null || attackIndex >= attacks.Length) return;
 
         AttackData attack = attacks[attackIndex];
-
         Vector3 offset = attack.hitboxOffset;
-        if (!facingRight) offset.x *= -1f;
+
+        if (playerNumber == 1)
+        {
+            if (!facingRight) offset.x *= -1f;
+        }
+        else if (playerNumber == 2)
+        {
+            if (facingRight) offset.x *= -1f;
+        }
 
         hitbox.center = offset;
         hitbox.size = attack.hitboxSize;
         hitbox.GetComponent<Hitbox>().attackData = attack;
+
+        StartCoroutine(ActivateHitboxWithDelay(attack.hitboxDelay, attack.hitboxActiveTime));
+    }
+
+    private IEnumerator ActivateHitboxWithDelay(float delay, float activeTime)
+    {
+        yield return new WaitForSeconds(delay);
         hitbox.gameObject.SetActive(true);
+        yield return new WaitForSeconds(activeTime);
+        hitbox.gameObject.SetActive(false);
     }
 
     public void DisableHitbox()
@@ -506,18 +593,49 @@ public class FighterController : MonoBehaviour
         switch (state)
         {
             case FighterState.Idle: animator.SetTrigger("Idle"); break;
-            case FighterState.Moving: animator.SetTrigger("Move"); break;
-            case FighterState.Attacking: animator.SetTrigger("Attack"); break;
-            case FighterState.Blocking: animator.SetTrigger("Block"); break;
-            case FighterState.Knockback: animator.SetTrigger("Knockback"); break;
-            case FighterState.KO: animator.SetTrigger("KO"); break;
+
+            // FIX: Removed the one-time trigger "Move". Handled continuously by the IsMoving bool in Update()
+            case FighterState.Moving: break;
+
+            case FighterState.Attacking:
+                animator.SetInteger("AttackIndex", currentAttackIndex);
+                Debug.Log("attackindex passed as " + currentAttackIndex);
+                animator.SetTrigger("Attack");
+                break;
+
+            case FighterState.Blocking: animator.SetBool("IsBlocking", true); break;
+
+            case FighterState.Knockback:
+                if (wasBlockingWhenHit)
+                    animator.SetTrigger("BlockHit");
+                else
+                    animator.SetTrigger("Knockback");
+                break;
+
+            case FighterState.KO:
+                animator.SetTrigger("KO");
+
+                // FIX: Permanently disconnect input system device mapping so nothing breaks post-game
+                if (actions != null)
+                {
+                    if (playerNumber == 1) actions.Fighter.Disable();
+                    else actions.FighterP2.Disable();
+                }
+                break;
         }
     }
 
     void OnExitState(FighterState state)
     {
         if (state == FighterState.Knockback)
+        {
             rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+            wasBlockingWhenHit = false; // Safely flush context data upon getting up
+        }
+
+        if (state == FighterState.Blocking)
+            if (animator != null && animator.runtimeAnimatorController != null)
+                animator.SetBool("IsBlocking", false);
     }
 
     public bool CanTransitionTo(FighterState newState)
@@ -546,4 +664,18 @@ public class FighterController : MonoBehaviour
         if (impulseSource == null) return;
         impulseSource.GenerateImpulse(magnitude);
     }
+
+    // -------------------------------------------------------
+    // Stun — used by projectiles and special moves
+    // Reuses Knockback state with zero velocity so all input is locked
+    // -------------------------------------------------------
+
+    public void ApplyStun(float duration)
+    {
+        if (currentState == FighterState.KO) return;
+        knockbackTimer = duration;
+        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+        TransitionTo(FighterState.Knockback);
+    }
+
 }

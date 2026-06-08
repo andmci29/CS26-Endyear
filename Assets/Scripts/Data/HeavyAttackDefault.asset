@@ -17,7 +17,8 @@ MonoBehaviour:
   knockbackForce: {x: 60, y: 24}
   hitStopDuration: 0.08
   screenShakeMagnitude: 0.15
-  hitboxOffset: {x: 0.5, y: 0, z: 0}
+  hitboxOffset: {x: 1.5, y: 0.5, z: 0}
   hitboxSize: {x: 1.8, y: 1.2, z: 0.6}
-  attackDuration: 0.6
-  hitboxActiveTime: 0.15
+  hitboxDelay: 0.6
+  hitboxActiveTime: 1
+  attackDuration: 1
