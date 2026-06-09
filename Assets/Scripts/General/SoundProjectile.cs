@@ -52,8 +52,15 @@ public class SoundProjectile : MonoBehaviour
 
         FighterController target = hurtbox.owner;
 
-        // Deal damage — reuse the TakeDamage path but with zero knockback
-        // Stun is applied separately so it overrides the knockback state cleanly
+        // If the target is blocking, the projectile is fully absorbed — no damage, no stun
+        // The projectile still destroys itself so it can't pass through a block
+        if (target.currentState == FighterState.Blocking)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        // Deal damage and stun — only reaches here if target is not blocking
         target.ApplyStun(stunDuration);
         target.currentHealth -= damage;
         target.currentHealth = Mathf.Max(target.currentHealth, 0f);

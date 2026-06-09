@@ -20,5 +20,5 @@ MonoBehaviour:
   hitboxOffset: {x: 1.15, y: 1, z: 0}
   hitboxSize: {x: 0.7, y: 0.5, z: 0.5}
   hitboxDelay: 0.4
-  hitboxActiveTime: 1
+  hitboxActiveTime: 0.7
   attackDuration: 0.6

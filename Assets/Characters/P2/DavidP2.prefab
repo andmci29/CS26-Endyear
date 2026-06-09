@@ -2325,6 +2325,7 @@ MonoBehaviour:
   damage: 10
   stunDuration: 1.6
   screenShake: 0.2
+  fireDelay: 1
   animationTrigger: Special
 --- !u!1 &7445325034279922200
 GameObject:

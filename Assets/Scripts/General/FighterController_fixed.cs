@@ -41,26 +41,31 @@ public class FighterController : MonoBehaviour
     public float gravityMultiplier = 4f;
     [Tooltip("Additional multiplier applied ONLY when falling down for a sharp, snappy peak.")]
     public float fallMultiplier = 1.3f;
+
     [Header("Camera")]
     public CinemachineImpulseSource impulseSource;
-    public bool CanBeJuggled => isLaunched && !hasBeenJuggled;
 
+    [Header("Combo")]
+    [Tooltip("Seconds after an attack where the next combo input is accepted")]
+    public float comboWindowDuration = 0.4f;
+    [Tooltip("Seconds of inactivity before combo resets to step 0")]
+    public float comboTimeoutDuration = 1.2f;
+
+    // Public property — used by opponent to check juggle availability
+    public bool CanBeJuggled => isLaunched && !hasBeenJuggled;
 
     // Private — state
     private float maxHealth;
     public bool facingRight = true;   // public so special ability scripts can read facing direction
     private Vector2 moveInput;
 
-    // Special ability — auto-found in Start, null if character has none
-    private SpecialAbilityBase specialAbility;
-
     // Private — grounded
     private bool isGrounded;
 
-    // Private — jump buffer & timers
+    // Private — timers
     private float jumpBufferTimer;
     private float knockbackTimer;
-    private float attackTimer;
+    public float attackTimer;         // public so GuitarSpecial can set it
     private float hitboxTimer;
     private int currentAttackIndex = -1;
     private bool isHitStopped = false;
@@ -69,7 +74,21 @@ public class FighterController : MonoBehaviour
 
     // Private — combat/animation tracking
     private Vector3 hitStopStoredVelocity;
-    private bool wasBlockingWhenHit = false; // Tracks if the hit was absorbed by a block
+    private bool wasBlockingWhenHit = false;
+
+    // Private — launcher
+    private bool isLaunched = false;
+    private bool hasBeenJuggled = false;
+
+    // Private — combo
+    private int comboStep = 0;
+    private float comboWindowTimer = 0f;
+    private float comboTimeoutTimer = 0f;
+    private bool comboInputBuffered = false;
+    private int bufferedComboInput = -1;
+
+    // Private — special ability
+    private SpecialAbilityBase specialAbility;
 
     // Private — input
     private InputAction moveAction;
@@ -79,10 +98,6 @@ public class FighterController : MonoBehaviour
     private InputAction heavyAttackAction;
     private InputAction specialAction;
     private InputAction superAction;
-    // Private — launcher
-    private bool isLaunched = false;
-    private bool hasBeenJuggled = false; // prevents more than one follow-up
-
 
     // -------------------------------------------------------
     // Unity lifecycle
@@ -170,15 +185,14 @@ public class FighterController : MonoBehaviour
             case FighterState.KO: HandleKO(); break;
         }
 
-        // Global Animator parameters updated continuously per-frame
+        // Global animator parameters updated continuously
         if (animator != null && animator.runtimeAnimatorController != null)
         {
             animator.SetBool("IsGrounded", isGrounded);
-
-            // FIX: Feeds the current state machine choice safely as a boolean parameter
             animator.SetBool("IsMoving", currentState == FighterState.Moving);
         }
     }
+
     private void FixedUpdate()
     {
         ApplyMovement();
@@ -190,7 +204,6 @@ public class FighterController : MonoBehaviour
 
     void ReadInput()
     {
-        // FIX: If KO'ed, completely ignore button configurations and clear inputs
         if (currentState == FighterState.KO)
         {
             moveInput = Vector2.zero;
@@ -209,6 +222,7 @@ public class FighterController : MonoBehaviour
 
     void UpdateTimers()
     {
+        // Jump buffer
         jumpBufferTimer -= Time.deltaTime;
 
         if (jumpBufferTimer > 0f
@@ -220,6 +234,18 @@ public class FighterController : MonoBehaviour
         {
             Jump();
             jumpBufferTimer = 0f;
+        }
+
+        // Combo window countdown
+        if (comboWindowTimer > 0f)
+            comboWindowTimer -= Time.deltaTime;
+
+        // Combo timeout — reset if player waits too long between hits
+        if (comboStep > 0)
+        {
+            comboTimeoutTimer -= Time.deltaTime;
+            if (comboTimeoutTimer <= 0f)
+                ResetCombo();
         }
     }
 
@@ -234,7 +260,7 @@ public class FighterController : MonoBehaviour
             if (contact.normal.y > 0.5f)
             {
                 isGrounded = true;
-                isLaunched = false;  // back on ground — no longer launched
+                isLaunched = false;
                 return;
             }
         }
@@ -251,7 +277,6 @@ public class FighterController : MonoBehaviour
 
     void ApplyMovement()
     {
-        // FIX: Removed "&& currentState != FighterState.KO" so dead players still fall with proper heavy gravity weight
         if (!isGrounded)
         {
             if (rb.linearVelocity.y > 0)
@@ -283,6 +308,10 @@ public class FighterController : MonoBehaviour
             TransitionTo(FighterState.Idle);
     }
 
+    // -------------------------------------------------------
+    // Hit-stop
+    // -------------------------------------------------------
+
     public IEnumerator HitStopCoroutine(float duration)
     {
         isHitStopped = true;
@@ -299,7 +328,7 @@ public class FighterController : MonoBehaviour
             yield return null;
 
         if (rb != null)
-            rb.linearVelocity = hitStopStoredVelocity; // now picks up the knockback velocity
+            rb.linearVelocity = hitStopStoredVelocity;
 
         isHitStopped = false;
         hitStopRoutine = null;
@@ -325,7 +354,9 @@ public class FighterController : MonoBehaviour
 
     void FaceOpponent()
     {
-        if (currentState == FighterState.Knockback || currentState == FighterState.KO || currentState == FighterState.Attacking) return;
+        if (currentState == FighterState.Knockback
+            || currentState == FighterState.KO
+            || currentState == FighterState.Attacking) return;
 
         if (opponent == null) return;
 
@@ -343,9 +374,13 @@ public class FighterController : MonoBehaviour
         transform.rotation = Quaternion.Euler(0f, yRotation, 0f);
     }
 
+    // -------------------------------------------------------
+    // Launcher juggle
+    // -------------------------------------------------------
+
     public void RegisterJuggleHit()
     {
-        hasBeenJuggled = true; // close the juggle window after one hit
+        hasBeenJuggled = true;
     }
 
     // -------------------------------------------------------
@@ -354,15 +389,8 @@ public class FighterController : MonoBehaviour
 
     void HandleIdle()
     {
-        if (lightAttackAction.WasPressedThisFrame())
-        {
-            if (opponent != null && opponent.CanBeJuggled)
-                opponent.RegisterJuggleHit();
-
-            StartAttack(0);
-        }
-
-        if (heavyAttackAction.WasPressedThisFrame()) StartAttack(1);
+        if (lightAttackAction.WasPressedThisFrame()) TryComboAttack(0);
+        if (heavyAttackAction.WasPressedThisFrame()) TryComboAttack(1);
 
         if (specialAction.WasPressedThisFrame() && isGrounded)
         {
@@ -375,23 +403,13 @@ public class FighterController : MonoBehaviour
 
     void HandleMoving()
     {
-        if (lightAttackAction.WasPressedThisFrame())
-        {
-            if (opponent != null && opponent.CanBeJuggled)
-                opponent.RegisterJuggleHit();
-
-            StartAttack(0);
-        }
-
-        if (heavyAttackAction.WasPressedThisFrame())
-        {
-            StartAttack(1);
-        }
+        if (lightAttackAction.WasPressedThisFrame()) TryComboAttack(0);
+        if (heavyAttackAction.WasPressedThisFrame()) TryComboAttack(1);
 
         if (specialAction.WasPressedThisFrame() && isGrounded)
         {
             if (specialAbility != null) specialAbility.TryActivate();
-            else StartAttack(2); // fallback to launcher if no special assigned
+            else StartAttack(2);
         }
 
         if (blockAction.WasPressedThisFrame()) TransitionTo(FighterState.Blocking);
@@ -401,14 +419,46 @@ public class FighterController : MonoBehaviour
     {
         if (isHitStopped) return;
 
+        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+
         attackTimer -= Time.deltaTime;
         hitboxTimer -= Time.deltaTime;
 
         if (hitboxTimer <= 0f)
             DisableHitbox();
 
-        if (attackTimer <= 0f)
+        // Open the cancel window in the last portion of the attack
+        // The window opens at 55% through the attack duration
+        if (attacks != null && currentAttackIndex >= 0 && currentAttackIndex < attacks.Length)
+        {
+            float cancelWindowStart = attacks[currentAttackIndex].attackDuration * 0.55f;
+            if (attackTimer <= cancelWindowStart && comboWindowTimer <= 0f)
+                comboWindowTimer = comboWindowDuration;
+        }
+
+        // If a combo input was buffered during the window, execute it when attack finishes
+        if (comboWindowTimer > 0f && comboInputBuffered && attackTimer <= 0f)
+        {
+            comboInputBuffered = false;
+            int buffered = bufferedComboInput;
+            bufferedComboInput = -1;
             OnAttackEnd();
+            ExecuteComboStep(buffered);
+            return;
+        }
+
+        if (attackTimer <= 0f)
+        {
+            ResetCombo();
+            OnAttackEnd();
+        }
+    }
+
+    void HandleBlocking()
+    {
+        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+        if (!blockAction.IsPressed())
+            TransitionTo(FighterState.Idle);
     }
 
     void HandleKnockback()
@@ -419,21 +469,11 @@ public class FighterController : MonoBehaviour
             TransitionTo(FighterState.Idle);
     }
 
-    void HandleBlocking()
-    {
-        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
-        if (!blockAction.IsPressed())
-            TransitionTo(FighterState.Idle);
-    }
-
     void HandleKO()
     {
         if (isHitStopped) return;
-
         if (isGrounded)
-        {
             rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
-        }
     }
 
     // -------------------------------------------------------
@@ -445,9 +485,98 @@ public class FighterController : MonoBehaviour
         rb.linearVelocity = new Vector3(rb.linearVelocity.x, data.jumpForce, 0f);
 
         if (animator != null && animator.runtimeAnimatorController != null)
-        {
             animator.SetTrigger("Jump");
+    }
+
+    // -------------------------------------------------------
+    // Combo system
+    // -------------------------------------------------------
+
+    void TryComboAttack(int inputType) // 0 = light, 1 = heavy
+    {
+        // If currently attacking, buffer the input for the cancel window
+        if (currentState == FighterState.Attacking)
+        {
+            if (comboWindowTimer > 0f)
+            {
+                comboInputBuffered = true;
+                bufferedComboInput = inputType;
+            }
+            return;
         }
+
+        // Not attacking — execute immediately
+        ExecuteComboStep(inputType);
+    }
+
+    void ExecuteComboStep(int inputType)
+    {
+        // Juggle check — if opponent is launched, register the juggle hit
+        if (inputType == 0 && opponent != null && opponent.CanBeJuggled)
+            opponent.RegisterJuggleHit();
+
+        // Enforce strict sequence: L(0) → L(0) → H(1)
+        switch (comboStep)
+        {
+            case 0: // fresh — only light starts the combo
+                if (inputType == 0)
+                {
+                    comboStep = 1;
+                    StartAttack(0);
+                }
+                else
+                {
+                    // Standalone heavy — no combo context
+                    ResetCombo();
+                    StartAttack(1);
+                }
+                break;
+
+            case 1: // after first light — second light continues
+                if (inputType == 0)
+                {
+                    comboStep = 2;
+                    StartAttack(0);
+                }
+                else
+                {
+                    // Wrong input — reset and treat as standalone
+                    ResetCombo();
+                    StartAttack(1);
+                }
+                break;
+
+            case 2: // after second light — heavy completes the combo
+                if (inputType == 1)
+                {
+                    comboStep = 3;
+                    StartAttack(1); // heavy ender
+                }
+                else
+                {
+                    // Pressed light again at step 2 — restart combo from step 1
+                    comboStep = 1;
+                    StartAttack(0);
+                }
+                break;
+
+            case 3: // combo complete — reset and start fresh
+                ResetCombo();
+                ExecuteComboStep(inputType);
+                break;
+        }
+
+        // Reset timeout on every step
+        comboTimeoutTimer = comboTimeoutDuration;
+    }
+
+    void ResetCombo()
+    {
+        comboStep = 0;
+        comboWindowTimer = 0f;
+        comboTimeoutTimer = 0f;
+        comboInputBuffered = false;
+        bufferedComboInput = -1;
     }
 
     // -------------------------------------------------------
@@ -476,7 +605,6 @@ public class FighterController : MonoBehaviour
     {
         if (currentState == FighterState.KO) return;
 
-        // Cache block status context before modifying health or states
         bool wasBlocking = (currentState == FighterState.Blocking);
 
         float damage = attack.damage;
@@ -490,12 +618,9 @@ public class FighterController : MonoBehaviour
 
         if (rb != null)
         {
-            float direction;
-
-            if (opponent != null)
-                direction = transform.position.x > opponent.transform.position.x ? 1f : -1f;
-            else
-                direction = facingRight ? 1f : -1f;
+            float direction = opponent != null
+                ? (transform.position.x > opponent.transform.position.x ? 1f : -1f)
+                : (facingRight ? 1f : -1f);
 
             Vector3 knockbackVelocity = new Vector3(
                 attack.knockbackForce.x * direction,
@@ -518,13 +643,28 @@ public class FighterController : MonoBehaviour
         TriggerScreenShake(attack.screenShakeMagnitude);
 
         if (currentHealth <= 0f)
+        {
             TransitionTo(FighterState.KO);
+        }
         else
         {
-            wasBlockingWhenHit = wasBlocking; // Carry block data forward into state transfer evaluation
+            wasBlockingWhenHit = wasBlocking;
             knockbackTimer = data.knockbackDuration;
             TransitionTo(FighterState.Knockback);
         }
+    }
+
+    // -------------------------------------------------------
+    // Stun — used by projectiles and special moves
+    // Reuses Knockback state with zero velocity so all input is locked
+    // -------------------------------------------------------
+
+    public void ApplyStun(float duration)
+    {
+        if (currentState == FighterState.KO) return;
+        knockbackTimer = duration;
+        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+        TransitionTo(FighterState.Knockback);
     }
 
     // -------------------------------------------------------
@@ -592,18 +732,22 @@ public class FighterController : MonoBehaviour
 
         switch (state)
         {
-            case FighterState.Idle: animator.SetTrigger("Idle"); break;
+            case FighterState.Idle:
+                animator.SetTrigger("Idle");
+                break;
 
-            // FIX: Removed the one-time trigger "Move". Handled continuously by the IsMoving bool in Update()
-            case FighterState.Moving: break;
+            case FighterState.Moving:
+                // Handled continuously by IsMoving bool in Update
+                break;
 
             case FighterState.Attacking:
                 animator.SetInteger("AttackIndex", currentAttackIndex);
-                Debug.Log("attackindex passed as " + currentAttackIndex);
                 animator.SetTrigger("Attack");
                 break;
 
-            case FighterState.Blocking: animator.SetBool("IsBlocking", true); break;
+            case FighterState.Blocking:
+                animator.SetBool("IsBlocking", true);
+                break;
 
             case FighterState.Knockback:
                 if (wasBlockingWhenHit)
@@ -614,8 +758,6 @@ public class FighterController : MonoBehaviour
 
             case FighterState.KO:
                 animator.SetTrigger("KO");
-
-                // FIX: Permanently disconnect input system device mapping so nothing breaks post-game
                 if (actions != null)
                 {
                     if (playerNumber == 1) actions.Fighter.Disable();
@@ -630,7 +772,7 @@ public class FighterController : MonoBehaviour
         if (state == FighterState.Knockback)
         {
             rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
-            wasBlockingWhenHit = false; // Safely flush context data upon getting up
+            wasBlockingWhenHit = false;
         }
 
         if (state == FighterState.Blocking)
@@ -659,23 +801,13 @@ public class FighterController : MonoBehaviour
         }
     }
 
+    // -------------------------------------------------------
+    // Camera
+    // -------------------------------------------------------
+
     public void TriggerScreenShake(float magnitude)
     {
         if (impulseSource == null) return;
         impulseSource.GenerateImpulse(magnitude);
     }
-
-    // -------------------------------------------------------
-    // Stun — used by projectiles and special moves
-    // Reuses Knockback state with zero velocity so all input is locked
-    // -------------------------------------------------------
-
-    public void ApplyStun(float duration)
-    {
-        if (currentState == FighterState.KO) return;
-        knockbackTimer = duration;
-        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
-        TransitionTo(FighterState.Knockback);
-    }
-
 }

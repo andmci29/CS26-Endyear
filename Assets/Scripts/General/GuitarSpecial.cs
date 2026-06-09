@@ -18,6 +18,10 @@ public class GuitarSpecial : SpecialAbilityBase
     public float stunDuration = 0.6f; // how long the opponent is frozen on hit
     public float screenShake = 0.2f;
 
+    [Header("Timing")]
+    [Tooltip("Seconds between animation start and projectile spawning — match to your animation")]
+    public float fireDelay = 0.2f;
+
     [Header("Animation")]
     public string animationTrigger = "Special"; // trigger name in the Animator
 
@@ -27,7 +31,6 @@ public class GuitarSpecial : SpecialAbilityBase
 
     private void Update()
     {
-        Debug.Log($"Special ready: {IsReady()} | Cooldown: {cooldownTimer:F1}s remaining");
         if (cooldownTimer > 0f)
             cooldownTimer -= Time.deltaTime;
     }
@@ -53,19 +56,19 @@ public class GuitarSpecial : SpecialAbilityBase
         isFiring = true;
         cooldownTimer = cooldownDuration;
 
-        // Lock fighter in place during firing (brief commit window like a real attack)
         fighter.TransitionTo(FighterState.Attacking);
 
-        // Trigger animation
+        // Set attackTimer to cover the full animation so HandleAttacking
+        // doesn't snap back to Idle before the coroutine finishes
+        fighter.attackTimer = fireDelay + 0.3f + 0.05f;
+
         if (fighter.animator != null && fighter.animator.runtimeAnimatorController != null)
             fighter.animator.SetTrigger(animationTrigger);
 
-        // Small windup before the projectile spawns — feels more intentional
-        yield return new WaitForSeconds(0.2f);
+        yield return new WaitForSeconds(fireDelay);
 
         SpawnProjectile();
 
-        // Hold attacking state briefly after firing
         yield return new WaitForSeconds(0.3f);
 
         fighter.TransitionTo(FighterState.Idle);
