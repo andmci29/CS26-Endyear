@@ -60,11 +60,11 @@ public class FighterController : MonoBehaviour
     private Vector2 moveInput;
 
     // Private — grounded
-    private bool isGrounded;
+    public bool isGrounded;
 
     // Private — timers
     private float jumpBufferTimer;
-    private float knockbackTimer;
+    public float knockbackTimer;
     public float attackTimer;         // public so GuitarSpecial can set it
     private float hitboxTimer;
     private int currentAttackIndex = -1;
@@ -354,17 +354,42 @@ public class FighterController : MonoBehaviour
 
     void FaceOpponent()
     {
+        ForceDefaultFacing();
+        // 1. Keep your existing guards
         if (currentState == FighterState.Knockback
             || currentState == FighterState.KO
             || currentState == FighterState.Attacking) return;
 
         if (opponent == null) return;
 
-        if (Mathf.Abs(opponent.transform.position.x - transform.position.x) < 0.02f) return;
+        // 2. NEW FIX: If this is the absolute beginning of the match and players are too close 
+        // or just spawning in, don't let a frame glitch accidentally flip them.
+        if (Mathf.Abs(opponent.transform.position.x - transform.position.x) < 0.1f)
+        {
+            // Enforce their absolute default rotations instead of flipping them
+            ForceDefaultFacing();
+            return;
+        }
 
+        // 3. Normal gameplay tracking logic continues safely below:
         bool opponentIsRight = opponent.transform.position.x > transform.position.x;
         if (opponentIsRight && !facingRight) Flip();
         else if (!opponentIsRight && facingRight) Flip();
+    }
+
+    // Helper method to keep code clean and maintain exact spawn orientation
+    void ForceDefaultFacing()
+    {
+        if (playerNumber == 1)
+        {
+            facingRight = true;
+            transform.rotation = Quaternion.Euler(0f, 90f, 0f);
+        }
+        else if (playerNumber == 2)
+        {
+            facingRight = false;
+            transform.rotation = Quaternion.Euler(0f, -90f, 0f);
+        }
     }
 
     void Flip()

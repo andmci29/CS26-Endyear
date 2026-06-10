@@ -1,4 +1,4 @@
-// SpecialCooldownUI.cs — attach to any GameObject in the scene, e.g. a UIManager
+// SpecialCooldownUI.cs
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -6,11 +6,11 @@ public class SpecialCooldownUI : MonoBehaviour
 {
     [Header("Player 1")]
     public Image p1CooldownImage;
-    public GuitarSpecial p1Special;
+    public SpecialAbilityBase p1Special;  // accepts GuitarSpecial, DrumStomp, or any future special
 
     [Header("Player 2")]
     public Image p2CooldownImage;
-    public GuitarSpecial p2Special;
+    public SpecialAbilityBase p2Special;
 
     private void Update()
     {

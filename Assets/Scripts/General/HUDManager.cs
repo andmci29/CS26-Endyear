@@ -17,6 +17,12 @@ public class HUDManager : MonoBehaviour
     public GameObject endScreenPanel;
     public TextMeshProUGUI winnerText;
 
+    [Header("Audio Settings")]
+    [Tooltip("The AudioSource component used to play the KO sound effect.")]
+    public AudioSource audioSource;
+    [Tooltip("The audio clip (like an announcer yelling 'K.O.!') that plays when a round ends.")]
+    public AudioClip koSound;
+
     private bool isGameOver = false;
 
     private void Start()
@@ -76,12 +82,24 @@ public class HUDManager : MonoBehaviour
 
         if (endScreenPanel != null)
             endScreenPanel.SetActive(true);
+
+        // NEW: Play the KO audio sound effect instantly when a player is defeated
+        if (audioSource != null && koSound != null)
+        {
+            audioSource.PlayOneShot(koSound);
+        }
     }
 
     // This method will be linked to your Rematch UI Button
     public void RematchButton()
     {
         // Reloads the currently running scene from scratch
-        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+        SceneTransitionManager.Instance.FadeToScene(SceneManager.GetActiveScene().name);
+    }
+
+    public void QuitToMenuButton()
+    {
+        // Transitions back to the main menu scene
+        SceneManager.LoadScene(0);
     }
 }

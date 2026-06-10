@@ -18,14 +18,25 @@ public class Hurtbox : MonoBehaviour
         if (owner == null) return;
         if (owner == attacker) return;
 
-        Debug.Log($"Hurtbox hit — owner: {owner.name}, attacker: {attacker.name}, damage: {attack.damage}");
+        // Play hit sound on the ATTACKER's audio — their instrument sound fires on confirmed hit
+        FighterAudio attackerAudio = attacker.GetComponent<FighterAudio>();
+        if (attackerAudio != null)
+        {
+            bool isHeavy = attack.damage >= 15f;
+            attackerAudio.PlayAttackLandSound(isHeavy);
+        }
 
-        // FIX: Apply damage and stage knockback vectors first
-        owner.TakeDamage(attack);
+        // Play impact sound on the DEFENDER — grunt, recoil sound
+        FighterAudio defenderAudio = owner.GetComponent<FighterAudio>();
+        if (defenderAudio != null)
+        {
+            bool wasBlocking = owner.currentState == FighterState.Blocking;
+            defenderAudio.PlayHitSound(wasBlocking, attack.damage >= 15f);
+        }
 
-        // Then freeze the frame loop simultaneously
         owner.ApplyHitStop(attack.hitStopDuration);
         attacker.ApplyHitStop(attack.hitStopDuration);
+        owner.TakeDamage(attack);
     }
 
     private void OnDrawGizmos()

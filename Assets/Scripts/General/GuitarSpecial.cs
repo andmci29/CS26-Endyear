@@ -56,19 +56,19 @@ public class GuitarSpecial : SpecialAbilityBase
         isFiring = true;
         cooldownTimer = cooldownDuration;
 
+        // Lock fighter in place during firing (brief commit window like a real attack)
         fighter.TransitionTo(FighterState.Attacking);
-
-        // Set attackTimer to cover the full animation so HandleAttacking
-        // doesn't snap back to Idle before the coroutine finishes
-        fighter.attackTimer = fireDelay + 0.3f + 0.05f;
 
         if (fighter.animator != null && fighter.animator.runtimeAnimatorController != null)
             fighter.animator.SetTrigger(animationTrigger);
 
+        // Windup — waits for fireDelay seconds before spawning projectile
+        // Tune this in the Inspector to match when the animation hits its release frame
         yield return new WaitForSeconds(fireDelay);
 
         SpawnProjectile();
 
+        // Hold attacking state briefly after firing
         yield return new WaitForSeconds(0.3f);
 
         fighter.TransitionTo(FighterState.Idle);
@@ -82,6 +82,9 @@ public class GuitarSpecial : SpecialAbilityBase
             Debug.LogWarning("GuitarSpecial: projectilePrefab is not assigned.");
             return;
         }
+
+        // Sound fires at the exact moment the projectile spawns
+        fighter.GetComponent<FighterAudio>()?.PlaySpecialSound();
 
         // Use firePoint if assigned, otherwise spawn at fighter's position + small offset
         Vector3 spawnPos = firePoint != null
