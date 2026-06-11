@@ -239,7 +239,7 @@ MonoBehaviour:
   - sceneIndex: 3
     track: {fileID: 8300000, guid: 947ba6b690eff55438e0591f6e87c33c, type: 3}
   - sceneIndex: 4
-    track: {fileID: 8300000, guid: 34d0fae5f7675044ba637a951841a487, type: 3}
+    track: {fileID: 8300000, guid: 7fd78291934d69145b031ac71945a9a4, type: 3}
 --- !u!82 &26752097
 AudioSource:
   m_ObjectHideFlags: 0
@@ -6060,7 +6060,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6313380926754918027, guid: 28ce3b49db73cfa4594b4092e3e55013, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7318852793309363242, guid: 28ce3b49db73cfa4594b4092e3e55013, type: 3}
       propertyPath: bellClip
@@ -6070,6 +6070,10 @@ PrefabInstance:
       propertyPath: audioSource
       value: 
       objectReference: {fileID: 37997124}
+    - target: {fileID: 7318852793309363242, guid: 28ce3b49db73cfa4594b4092e3e55013, type: 3}
+      propertyPath: titleSceneName
+      value: CharacterSelect
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
